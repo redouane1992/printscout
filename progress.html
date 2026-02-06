@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8">
+  <title>Artisan Analyzer – Progress</title>
+  <style>
+    body {
+      font-family: Arial;
+      padding: 15px;
+      width: 260px;
+      background: #fafafa;
+    }
+    h3 { margin-top: 0; }
+    .bar {
+      height: 18px;
+      background: #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .bar-inner {
+      height: 100%;
+      width: 0%;
+      background: #4caf50;
+      transition: width .3s;
+    }
+    .pct {
+      margin-top: 6px;
+      font-size: 13px;
+    }
+    .text {
+      margin-top: 6px;
+      font-size: 12px;
+      opacity: .8;
+    }
+  </style>
+</head>
+<body>
+
+  <h3>Artisan Analyzer</h3>
+
+  <div class="bar">
+    <div id="bar" class="bar-inner"></div>
+  </div>
+
+  <div id="pct" class="pct">0%</div>
+  <div id="text" class="text">Waiting...</div>
+
+  <script src="progress.js"></script>
+</body>
+</html>
