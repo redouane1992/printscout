@@ -1,20 +1,96 @@
 let RUNNING = false;
 let SOURCE_TAB_ID = null;
 
+let UI_LANG = "ar";
+
+const I18N = {
+  ar: {
+    start: "بدء التحليل...",
+    collect: "جمع المتاجر من الصفحة",
+    stores: "تحليل المتاجر",
+    designs: "استخراج عناوين/وصف/كلمات مفتاحية",
+    exporting: "تصدير الملفات...",
+    done: "تم الانتهاء",
+    err: "خطأ: ",
+    pages: "الصفحة",
+    of: "/",
+    store: "المتجر",
+    design: "تصميم"
+  },
+  en: {
+    start: "Starting...",
+    collect: "Collecting stores from page",
+    stores: "Analyzing stores",
+    designs: "Extracting titles/description/keywords",
+    exporting: "Exporting files...",
+    done: "Done",
+    err: "Error: ",
+    pages: "Page",
+    of: "/",
+    store: "Store",
+    design: "Design"
+  },
+  fr: {
+    start: "Démarrage...",
+    collect: "Collecte des boutiques depuis la page",
+    stores: "Analyse des boutiques",
+    designs: "Extraction titre/description/mots-clés",
+    exporting: "Export des fichiers...",
+    done: "Terminé",
+    err: "Erreur : ",
+    pages: "Page",
+    of: "/",
+    store: "Boutique",
+    design: "Design"
+  },
+  es: {
+    start: "Iniciando...",
+    collect: "Recolectando tiendas de la página",
+    stores: "Analizando tiendas",
+    designs: "Extrayendo título/descripción/keywords",
+    exporting: "Exportando archivos...",
+    done: "Hecho",
+    err: "Error: ",
+    pages: "Página",
+    of: "/",
+    store: "Tienda",
+    design: "Diseño"
+  },
+  de: {
+    start: "Start...",
+    collect: "Shops sammeln von Seite",
+    stores: "Shops analysieren",
+    designs: "Titel/Beschreibung/Keywords extrahieren",
+    exporting: "Dateien exportieren...",
+    done: "Fertig",
+    err: "Fehler: ",
+    pages: "Seite",
+    of: "/",
+    store: "Shop",
+    design: "Design"
+  }
+};
+
+function t(key) {
+  const dict = I18N[UI_LANG] || I18N.en;
+  return dict[key] ?? (I18N.en[key] ?? key);
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "START_ANALYSIS") {
     if (RUNNING) {
-      sendResponse({ ok: false, error: "التحليل يعمل بالفعل" });
+      sendResponse({ ok: false, error: "Already running" });
       return;
     }
 
     RUNNING = true;
+    UI_LANG = msg?.filters?.uiLang || "ar";
 
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
       try {
         if (!tab?.id || !tab.url || !tab.url.includes("teepublic.com")) {
           RUNNING = false;
-          sendResponse({ ok: false, error: "افتح صفحة TeePublic أولًا" });
+          sendResponse({ ok: false, error: "Open TeePublic first" });
           return;
         }
 
@@ -39,7 +115,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg?.type === "GET_PROGRESS") {
     chrome.storage.local.get("progress", d => {
-      sendResponse(d.progress || { pct: 0, text: "Waiting..." });
+      sendResponse(d.progress || { pct: 0, text: t("start") });
     });
     return true;
   }
@@ -47,7 +123,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 async function startAnalysis(filters) {
   try {
-    await setProgress(0, "بدء التحليل...");
+    await setProgress(0, t("start"));
 
     const baseTabId = SOURCE_TAB_ID;
     const baseTab = await chrome.tabs.get(baseTabId);
@@ -56,14 +132,13 @@ async function startAnalysis(filters) {
     const pagesCount = Math.max(1, Number(filters.pagesCount || 1));
     const designsPerStore = clamp(Number(filters.designsPerStore || 5), 1, 50);
 
-    // storeUrl -> appearances
     const storeAppearances = new Map();
 
-    // ===== Stage A: scan pages -> store appearances (0..35) =====
+    // Stage A
     for (let p = 1; p <= pagesCount; p++) {
       await setProgress(
         Math.floor(((p - 1) / pagesCount) * 35),
-        `جمع المتاجر من الصفحة ${p}/${pagesCount}`
+        `${t("collect")} ${p}${t("of")}${pagesCount}`
       );
 
       const pageUrl = new URL(baseUrl.toString());
@@ -83,15 +158,15 @@ async function startAnalysis(filters) {
         const links = Array.isArray(designLinks) ? designLinks : [];
 
         for (const designUrl of links) {
-          const t = await tabsCreateSafe({ url: designUrl, active: false });
-          if (!t?.id) continue;
+          const ttab = await tabsCreateSafe({ url: designUrl, active: false });
+          if (!ttab?.id) continue;
 
           try {
-            const ok = await waitForStoreLinkSafe(t.id);
+            const ok = await waitForStoreLinkSafe(ttab.id);
             if (!ok) continue;
 
             const [{ result: storeUrl }] = await chrome.scripting.executeScript({
-              target: { tabId: t.id },
+              target: { tabId: ttab.id },
               func: () => {
                 const a = document.querySelector('a[href^="/user/"]');
                 return a ? new URL(a.href).toString().replace(/\/+$/, "") : "";
@@ -103,7 +178,7 @@ async function startAnalysis(filters) {
             }
           } catch {
           } finally {
-            await tabsRemoveSafe(t.id);
+            await tabsRemoveSafe(ttab.id);
           }
         }
       } finally {
@@ -113,11 +188,11 @@ async function startAnalysis(filters) {
 
     const storeUrls = Array.from(storeAppearances.keys());
     if (!storeUrls.length) {
-      await setProgress(0, "خطأ: لم يتم العثور على متاجر");
+      await setProgress(0, t("err") + "No stores found");
       return;
     }
 
-    // ===== Stage B: scrape stores + filter (35..60) =====
+    // Stage B
     const storeResults = [];
     let sIdx = 0;
 
@@ -125,18 +200,18 @@ async function startAnalysis(filters) {
       sIdx++;
       await setProgress(
         35 + Math.floor((sIdx / storeUrls.length) * 25),
-        `تحليل المتاجر ${sIdx}/${storeUrls.length}`
+        `${t("stores")} ${sIdx}${t("of")}${storeUrls.length}`
       );
 
-      const t = await tabsCreateSafe({ url: storeUrl, active: false });
-      if (!t?.id) continue;
+      const tab = await tabsCreateSafe({ url: storeUrl, active: false });
+      if (!tab?.id) continue;
 
       try {
-        const ok = await waitForSelectorSafe(t.id, ".m-store-head, h1");
+        const ok = await waitForSelectorSafe(tab.id, ".m-store-head, h1");
         if (!ok) continue;
 
         const [{ result }] = await chrome.scripting.executeScript({
-          target: { tabId: t.id },
+          target: { tabId: tab.id },
           files: ["scripts/scraper.store.js"]
         });
 
@@ -153,11 +228,10 @@ async function startAnalysis(filters) {
         storeResults.push(r);
       } catch {
       } finally {
-        await tabsRemoveSafe(t.id);
+        await tabsRemoveSafe(tab.id);
       }
     }
 
-    // Sort stores: appearances desc, designs asc
     storeResults.sort((a, b) => {
       const aApp = a.appearances || 0;
       const bApp = b.appearances || 0;
@@ -167,8 +241,8 @@ async function startAnalysis(filters) {
       return aD - bD;
     });
 
-    // ===== Stage C: analyze first N designs per store (60..90) =====
-    await setProgress(60, `استخراج عناوين/وصف/كلمات مفتاحية (أول ${designsPerStore} تصميم لكل متجر)...`);
+    // Stage C
+    await setProgress(60, `${t("designs")} (${designsPerStore})`);
 
     const designRows = [];
     let storeCounter = 0;
@@ -177,7 +251,7 @@ async function startAnalysis(filters) {
       storeCounter++;
       await setProgress(
         60 + Math.floor((storeCounter / storeResults.length) * 30),
-        `تصاميم المتجر ${storeCounter}/${storeResults.length}`
+        `${t("designs")} ${storeCounter}${t("of")}${storeResults.length}`
       );
 
       const storeTab = await tabsCreateSafe({ url: store.storeUrl, active: false });
@@ -228,29 +302,23 @@ async function startAnalysis(filters) {
       }
     }
 
-    // ===== Stage D: export (95..100) =====
-    await setProgress(95, "تصدير الملفات...");
+    // Stage D
+    await setProgress(95, t("exporting"));
 
     const storesCsv = makeStoresCSV(storeResults);
-    await downloadCSV(
-      storesCsv,
-      `stores-pages-${pagesCount}-${new Date().toISOString().slice(0, 10)}.csv`
-    );
+    await downloadCSV(storesCsv, `stores-pages-${pagesCount}-${new Date().toISOString().slice(0, 10)}.csv`);
 
     const designCsv = makeDesignCSV(designRows);
-    await downloadCSV(
-      designCsv,
-      `designs-pages-${pagesCount}-N${designsPerStore}-${new Date().toISOString().slice(0, 10)}.csv`
-    );
+    await downloadCSV(designCsv, `designs-pages-${pagesCount}-N${designsPerStore}-${new Date().toISOString().slice(0, 10)}.csv`);
 
-    await setProgress(100, "تم الانتهاء");
+    await setProgress(100, t("done"));
   } catch (e) {
-    await setProgress(0, "خطأ عام: " + (e?.message || String(e)));
+    await setProgress(0, t("err") + (e?.message || String(e)));
   }
 }
 
 function setProgress(pct, text) {
-  return chrome.storage.local.set({ progress: { pct, text, ts: Date.now() } });
+  return chrome.storage.local.set({ progress: { pct, text, ts: Date.now(), lang: UI_LANG } });
 }
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -326,9 +394,6 @@ async function downloadCSV(csvText, filename) {
   await chrome.downloads.download({ url: dataUrl, filename, saveAs: true });
 }
 
-// ===== CSV EXPORTS =====
-
-// ملف المتاجر (بدون Has Social و Artisan)
 function makeStoresCSV(rows) {
   const headers = ["Store Name", "Store", "Designs", "Appearances", "Social Links"];
   const lines = [headers.join(",")];
@@ -345,7 +410,6 @@ function makeStoresCSV(rows) {
   return lines.join("\n");
 }
 
-// ملف التصاميم: Title / Description / Keywords فقط
 function makeDesignCSV(rows) {
   const headers = ["Store", "Design", "Title", "Description", "Keywords"];
   const lines = [headers.join(",")];
@@ -359,7 +423,6 @@ function makeDesignCSV(rows) {
       `"${esc(cleanCell(r.keywords))}"`
     ].join(","));
   }
-
   return lines.join("\n");
 }
 
