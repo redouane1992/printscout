@@ -1,22 +1,23 @@
-# PrintScout – AI Niche Design Automation System
+# PrintScout – TeePublic Product Research & Trend Scoring Tool
 
 ## Overview
-PrintScout is a Python-based automation project designed to generate niche-focused design concepts and structured product listings using AI-assisted workflows.
+PrintScout is a Python project that helps research TeePublic by collecting product data and scoring listings to identify designs that may be selling well.
 
-The system is built to reduce manual work by organizing design generation, listing preparation, and structured processing into a repeatable pipeline.
+The goal is to reduce manual research by automating discovery, sorting, and ranking based on simple signals (e.g., engagement indicators, recency, category, keywords).
 
-## Core Features
-- Niche-based structured input
-- Prompt generation logic
-- AI-assisted design workflow
-- Automated listing generation
-- Modular project structure
+## What it does
+- Collects TeePublic listing data (search results / product pages depending on the module)
+- Extracts key fields (title, tags/keywords, category, price, etc.)
+- Applies a basic trend scoring logic to rank products
+- Outputs results in a structured format for review (e.g., CSV/JSON)
 
-## Technologies Used
+## Tech Stack
 - Python
-- Generative AI tools
-- Workflow automation logic
-- Git for version control
+- Data processing / scoring logic
+- Automation scripting
 
-## Current Status
-Project under active development. Focused on improving automation reliability and output structuring.
+## Status
+Under active development. Scoring and extraction logic are being improved for reliability.
+
+## Notes
+This project is intended for research and analysis only.
